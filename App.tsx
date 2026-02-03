@@ -13,51 +13,61 @@ import { Button } from './components/Button';
 const INITIAL_DATA: EquipmentRequest[] = [
   {
     id: '1',
-    requestDate: '2023-10-01',
-    uo: 'Obra Norte',
+    requestDate: '2026-02-03',
+    uo: '332 - Ruta Nacional 19',
     category: 'Equipos',
-    description: 'Excavadora 20T',
-    capacity: '20 Toneladas',
-    quantity: 2,
-    needDate: '2023-11-01',
-    comments: 'Urgente para movimiento de suelos',
+    description: 'Excavadora',
+    capacity: '20 Tn',
+    quantity: 3,
+    needDate: '2026-03-01',
+    comments: '',
     status: RequestStatus.PENDING
   },
   {
     id: '2',
-    requestDate: '2023-10-05',
-    uo: 'Planta Central',
+    requestDate: '2026-02-03',
+    uo: '332 - Ruta Nacional 19',
     category: 'Equipos',
-    description: 'Camioneta Pickup',
-    capacity: '4x4',
-    quantity: 1,
-    needDate: '2023-10-20',
-    comments: 'Reemplazo de unidad 404',
+    description: 'Motoniveladora',
+    capacity: '14"',
+    quantity: 2,
+    needDate: '2026-03-01',
+    comments: '',
     status: RequestStatus.PENDING
   },
   {
       id: '3',
-      requestDate: '2023-10-10',
-      uo: 'Obra Norte',
-      category: 'Contenedor/Obrador',
-      description: 'Generador Eléctrico',
-      capacity: '100 KVA',
+      requestDate: '2026-02-03',
+      uo: '334 - Tinoco',
+      category: 'Equipos',
+      description: 'Tractor',
+      capacity: '250 HP',
       quantity: 1,
-      needDate: '2023-10-15',
+      needDate: '2026-04-01',
       comments: '',
-      status: RequestStatus.RENT,
-      rentalDuration: 6 // Pre-filled for demo
+      status: RequestStatus.PENDING
+  },
+  {
+      id: '4',
+      requestDate: '2026-02-03',
+      uo: '334 - Tinoco',
+      category: 'Contenedor/Obrador',
+      description: 'Comedor',
+      capacity: '12 mts',
+      quantity: 1,
+      needDate: '2026-04-01',
+      comments: '',
+      status: RequestStatus.PENDING
   }
 ];
 
 // Initial Operational Units
 const INITIAL_UOS = [
-  'Obra Norte',
-  'Obra Sur',
-  'Planta Central',
-  'Taller Mantenimiento',
-  'Logística',
-  'Administración'
+  '332 - Ruta Nacional 19',
+  '334 - Tinoco',
+  '307 - Ruta Nacional 9, Sgo. del Estero',
+  '317 - TECSAN',
+  '812 - GEyT'
 ];
 
 // Initial Categories

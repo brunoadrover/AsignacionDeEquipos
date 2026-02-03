@@ -86,7 +86,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                 <input 
                                     type="password" 
-                                    className="w-full pl-9 pr-3 py-2 rounded border border-slate-300 focus:ring-2 focus:ring-[#1B4D3E] focus:border-transparent text-sm"
+                                    className="w-full pl-9 pr-3 py-2 rounded border border-slate-300 focus:ring-2 focus:ring-[#1B4D3E] focus:border-transparent text-sm bg-white text-slate-900"
                                     placeholder="••••••••"
                                     value={newPassword}
                                     onChange={(e) => setNewPassword(e.target.value)}
