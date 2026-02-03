@@ -1,0 +1,5 @@
+{
+  "name": "Gestión de Requerimientos de Equipos",
+  "description": "Aplicación para gestionar solicitudes de equipos de obra, clasificarlas (Propio, Alquiler, Compra) y generar reportes PDF agrupados por Unidad Operativa.",
+  "requestFramePermissions": []
+}
