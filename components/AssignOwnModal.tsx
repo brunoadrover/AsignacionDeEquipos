@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, CheckCircle2 } from 'lucide-react';
+import { X, Plus, Trash2, CheckCircle2, Search, Loader2 } from 'lucide-react';
 import { Button } from './Button';
 import { EquipmentRequest, OwnDetails } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface AssignOwnModalProps {
   isOpen: boolean;
@@ -17,12 +18,14 @@ export const AssignOwnModal: React.FC<AssignOwnModalProps> = ({
   request 
 }) => {
   const [assignedItems, setAssignedItems] = useState<OwnDetails[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [formData, setFormData] = useState<OwnDetails>({
     internalId: '',
     brand: '',
     model: '',
     hours: 0,
-    availabilityDate: ''
+    availabilityDate: '',
+    equipo_id: ''
   });
 
   useEffect(() => {
@@ -33,10 +36,39 @@ export const AssignOwnModal: React.FC<AssignOwnModalProps> = ({
             brand: '',
             model: '',
             hours: 0,
-            availabilityDate: ''
+            availabilityDate: '',
+            equipo_id: ''
         });
     }
   }, [isOpen, request]);
+
+  // Real-time lookup logic
+  useEffect(() => {
+    const lookupEquipment = async () => {
+        if (formData.internalId.length < 2) return;
+        
+        setIsSearching(true);
+        const { data, error } = await supabase
+            .from('equipos')
+            .select('*')
+            .eq('nro_interno', formData.internalId)
+            .single();
+        
+        if (data && !error) {
+            setFormData(prev => ({
+                ...prev,
+                brand: data.marca || '',
+                model: data.modelo || '',
+                hours: Number(data.horas_arrastre) || 0,
+                equipo_id: data.id
+            }));
+        }
+        setIsSearching(false);
+    };
+
+    const timeoutId = setTimeout(lookupEquipment, 500);
+    return () => clearTimeout(timeoutId);
+  }, [formData.internalId]);
 
   if (!isOpen || !request) return null;
 
@@ -48,13 +80,13 @@ export const AssignOwnModal: React.FC<AssignOwnModalProps> = ({
 
     setAssignedItems([...assignedItems, formData]);
     
-    // Reset form for next item, but maybe keep date? Let's clear for safety as per requirement to ask again
     setFormData({
       internalId: '',
       brand: '',
       model: '',
       hours: 0,
-      availabilityDate: formData.availabilityDate // Keep date as convenience
+      availabilityDate: formData.availabilityDate,
+      equipo_id: ''
     });
   };
 
@@ -88,7 +120,7 @@ export const AssignOwnModal: React.FC<AssignOwnModalProps> = ({
         <div className="p-4 bg-blue-50 border-b border-blue-100 flex justify-between items-center">
           <div>
              <p className="text-sm text-blue-800 font-medium">{request.description}</p>
-             <p className="text-xs text-blue-600">UO: {request.uo}</p>
+             <p className="text-xs text-blue-600">UO: {request.uo_nombre}</p>
           </div>
           <div className="text-right">
               <span className="text-xs font-bold uppercase text-blue-600 block">Pendientes de cargar</span>
@@ -97,7 +129,6 @@ export const AssignOwnModal: React.FC<AssignOwnModalProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
-            {/* Form Column */}
             <div className="space-y-4">
                 <h4 className="font-medium text-slate-700 border-b pb-2">
                     {remainingQty > 0 ? `Datos del Equipo (${assignedItems.length + 1}/${request.quantity})` : 'Carga Completa'}
@@ -105,36 +136,42 @@ export const AssignOwnModal: React.FC<AssignOwnModalProps> = ({
                 
                 {remainingQty > 0 ? (
                 <form onSubmit={handleAddItem} className="space-y-3">
-                    <div>
+                    <div className="relative">
                         <label className="block text-xs font-medium text-slate-700 mb-1">Nº Interno</label>
-                        <input
-                        required
-                        type="text"
-                        className="w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 text-sm bg-white text-slate-900"
-                        value={formData.internalId}
-                        onChange={(e) => setFormData({...formData, internalId: e.target.value})}
-                        />
+                        <div className="relative">
+                            <input
+                            required
+                            type="text"
+                            placeholder="Ingrese N° de Interno..."
+                            className="w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 text-sm bg-white text-slate-900 pr-10"
+                            value={formData.internalId}
+                            onChange={(e) => setFormData({...formData, internalId: e.target.value})}
+                            />
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                {isSearching ? <Loader2 size={16} className="text-blue-500 animate-spin" /> : <Search size={16} className="text-slate-400" />}
+                            </div>
+                        </div>
                     </div>
                     
                     <div className="grid grid-cols-2 gap-3">
                         <div>
                         <label className="block text-xs font-medium text-slate-700 mb-1">Marca</label>
                         <input
-                            required
+                            readOnly
                             type="text"
-                            className="w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 text-sm bg-white text-slate-900"
+                            className="w-full rounded-md border-slate-300 shadow-sm border p-2 text-sm bg-slate-50 text-slate-600"
                             value={formData.brand}
-                            onChange={(e) => setFormData({...formData, brand: e.target.value})}
+                            placeholder="Autocompletado..."
                         />
                         </div>
                         <div>
                         <label className="block text-xs font-medium text-slate-700 mb-1">Modelo</label>
                         <input
-                            required
+                            readOnly
                             type="text"
-                            className="w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 text-sm bg-white text-slate-900"
+                            className="w-full rounded-md border-slate-300 shadow-sm border p-2 text-sm bg-slate-50 text-slate-600"
                             value={formData.model}
-                            onChange={(e) => setFormData({...formData, model: e.target.value})}
+                            placeholder="Autocompletado..."
                         />
                         </div>
                     </div>
@@ -143,12 +180,10 @@ export const AssignOwnModal: React.FC<AssignOwnModalProps> = ({
                         <div>
                         <label className="block text-xs font-medium text-slate-700 mb-1">Hs Arrastre</label>
                         <input
-                            required
+                            readOnly
                             type="number"
-                            min="0"
-                            className="w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 text-sm bg-white text-slate-900"
+                            className="w-full rounded-md border-slate-300 shadow-sm border p-2 text-sm bg-slate-50 text-slate-600"
                             value={formData.hours}
-                            onChange={(e) => setFormData({...formData, hours: Number(e.target.value)})}
                         />
                         </div>
                         <div>
@@ -163,9 +198,12 @@ export const AssignOwnModal: React.FC<AssignOwnModalProps> = ({
                         </div>
                     </div>
 
-                    <Button type="submit" size="sm" className="w-full mt-2" variant="secondary">
+                    <Button type="submit" size="sm" className="w-full mt-2" variant="secondary" disabled={!formData.equipo_id}>
                         <Plus size={16} className="mr-2" /> Agregar a la lista
                     </Button>
+                    {!formData.equipo_id && formData.internalId.length > 2 && !isSearching && (
+                        <p className="text-[10px] text-red-500 text-center font-medium">Equipo no encontrado en la base de datos.</p>
+                    )}
                 </form>
                 ) : (
                     <div className="bg-emerald-50 text-emerald-800 p-4 rounded-md flex items-center gap-3">
@@ -175,7 +213,6 @@ export const AssignOwnModal: React.FC<AssignOwnModalProps> = ({
                 )}
             </div>
 
-            {/* List Column */}
             <div className="bg-slate-50 rounded-lg border border-slate-200 flex flex-col h-full max-h-[400px]">
                 <div className="p-3 border-b border-slate-200 bg-slate-100">
                     <h4 className="font-medium text-slate-700 text-sm">Equipos Asignados ({assignedItems.length})</h4>
@@ -197,7 +234,7 @@ export const AssignOwnModal: React.FC<AssignOwnModalProps> = ({
                                     <span className="text-xs bg-emerald-100 text-emerald-800 px-1.5 rounded">{item.availabilityDate}</span>
                                 </div>
                                 <div className="text-xs text-slate-600">
-                                    {item.brand} {item.model} • {item.hours}hs
+                                    {item.brand} {item.model}
                                 </div>
                             </div>
                         ))

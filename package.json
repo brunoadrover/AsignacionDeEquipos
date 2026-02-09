@@ -13,7 +13,8 @@
     "react-dom": "^19.2.4",
     "lucide-react": "^0.563.0",
     "jspdf": "^4.1.0",
-    "jspdf-autotable": "^5.0.7"
+    "jspdf-autotable": "^5.0.7",
+    "@supabase/supabase-js": "2.48.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

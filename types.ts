@@ -7,11 +7,13 @@ export enum RequestStatus {
 }
 
 export interface OwnDetails {
+  id?: string;
   internalId: string;
   brand: string;
   model: string;
   hours: number;
   availabilityDate: string;
+  equipo_id?: string;
 }
 
 export interface BuyDetails {
@@ -19,21 +21,39 @@ export interface BuyDetails {
   deliveryDate: string;
 }
 
+export interface UnidadOperativa {
+  id: string;
+  nombre: string;
+}
+
+export interface Categoria {
+  id: string;
+  nombre: string;
+}
+
 export interface EquipmentRequest {
   id: string;
   requestDate: string;
-  uo: string; // Unidad Operativa
-  category: string; // Nueva Categoría
+  uo_id: string;
+  uo_nombre?: string;
+  categoria_id: string;
+  categoria_nombre?: string;
   description: string;
   capacity: string;
   quantity: number;
   needDate: string;
   comments: string;
   status: RequestStatus;
-  ownDetails?: OwnDetails; // Only if status is OWN
-  buyDetails?: BuyDetails; // Only if status is BUY
-  rentalDuration?: number; // Only if status is RENT (in months)
-  fulfillmentType?: RequestStatus; // To track if it was OWN, RENT or BUY when completed
+  
+  // These might come from joined 'asignaciones'
+  ownDetails?: OwnDetails;
+  buyDetails?: BuyDetails;
+  rentalDuration?: number;
+  fulfillmentType?: RequestStatus;
+  
+  // DB consistency
+  unidad_operativa?: UnidadOperativa;
+  categoria?: Categoria;
 }
 
 export type ViewMode = 'DASHBOARD' | 'REPORT_OWN' | 'REPORT_RENT' | 'REPORT_BUY' | 'COMPLETED' | 'SETTINGS';
