@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { RequestForm } from './components/RequestForm';
 import { EquipmentRequest, RequestStatus, ViewMode, OwnDetails, BuyDetails, UnidadOperativa, Categoria } from './types';
@@ -6,9 +7,11 @@ import { AssignRentModal } from './components/AssignRentModal';
 import { ReportView } from './components/ReportView';
 import { SettingsView } from './components/SettingsView';
 import { LoginScreen } from './components/LoginScreen';
-import { LayoutDashboard, ShoppingCart, Key, Search, Calendar, Package, Settings, Filter, CheckSquare, LogOut, Pencil, Trash2, X, Save, CheckCircle, Loader2 } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Key, Search, Calendar, Package, Settings, Filter, CheckSquare, LogOut, Pencil, Trash2, X, Save, CheckCircle, Loader2, FileDown } from 'lucide-react';
 import { Button } from './components/Button';
 import { supabase } from './lib/supabase';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const BRAND_GREEN = "bg-[#1B4D3E]"; 
 
@@ -21,9 +24,9 @@ const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>('DASHBOARD');
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [uoFilter, setUoFilter] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   
-  // Pending Editing State
   const [editingPendingId, setEditingPendingId] = useState<string | null>(null);
   const [editPendingValues, setEditPendingValues] = useState<Partial<EquipmentRequest>>({});
   const [deletingPendingId, setDeletingPendingId] = useState<string | null>(null);
@@ -268,20 +271,103 @@ const App: React.FC = () => {
       if (!error) setAppPassword(newPass);
   };
 
-  const pendingRequests = requests
-    .filter(r => r.status === RequestStatus.PENDING)
-    .filter(r => 
-      (searchTerm === '' || r.uo_nombre?.toLowerCase().includes(searchTerm.toLowerCase()) || r.description.toLowerCase().includes(searchTerm.toLowerCase())) &&
-      (categoryFilter === '' || r.categoria_id === categoryFilter)
-    );
+  const getFilteredRequests = (status: RequestStatus) => {
+    return requests.filter(r => {
+        const matchesStatus = r.status === status;
+        const matchesSearch = searchTerm === '' || 
+                             r.uo_nombre?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                             r.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                             r.ownDetails?.internalId.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesCategory = categoryFilter === '' || r.categoria_id === categoryFilter;
+        const matchesUO = uoFilter === '' || r.uo_id === uoFilter;
 
-  const stats = {
-    pending: requests.filter(r => r.status === RequestStatus.PENDING).reduce((acc, curr) => acc + curr.quantity, 0),
-    own: requests.filter(r => r.status === RequestStatus.OWN).length, 
-    rent: requests.filter(r => r.status === RequestStatus.RENT).length,
-    buy: requests.filter(r => r.status === RequestStatus.BUY).length,
-    completed: requests.filter(r => r.status === RequestStatus.COMPLETED).length,
+        return matchesStatus && matchesSearch && matchesCategory && matchesUO;
+    });
   };
+
+  const handleExportFullPDF = () => {
+    const doc = new jsPDF();
+    const dateStr = new Date().toLocaleDateString().replace(/\//g, '-');
+    
+    doc.setFontSize(22);
+    doc.setTextColor(27, 77, 62);
+    doc.text("Reporte Unificado de Gestión de Equipos", 14, 20);
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Filtros aplicados - UO: ${uos.find(u=>u.id===uoFilter)?.nombre || 'Todas'}, Cat: ${categories.find(c=>c.id===categoryFilter)?.nombre || 'Todas'}`, 14, 28);
+    
+    let yPos = 35;
+
+    const sections = [
+        { title: "SOLICITUDES PENDIENTES", status: RequestStatus.PENDING },
+        { title: "EQUIPOS PROPIOS ASIGNADOS", status: RequestStatus.OWN },
+        { title: "GESTIÓN DE COMPRA", status: RequestStatus.BUY },
+        { title: "EQUIPOS EN ALQUILER", status: RequestStatus.RENT }
+    ];
+
+    sections.forEach((section) => {
+        const data = getFilteredRequests(section.status);
+        if (data.length === 0) return;
+
+        if (yPos > 250) { doc.addPage(); yPos = 20; }
+        
+        doc.setFontSize(14);
+        doc.setTextColor(27, 77, 62);
+        doc.text(section.title, 14, yPos);
+        yPos += 7;
+
+        const uoGroups = data.reduce((acc, curr) => {
+            const uo = curr.uo_nombre || 'Sin UO';
+            if (!acc[uo]) acc[uo] = [];
+            acc[uo].push(curr);
+            return acc;
+        }, {} as Record<string, EquipmentRequest[]>);
+
+        // Fixed type inference issue by explicitly casting Object.entries to fix map errors on lines 338, 341, 344, 347 (per report)
+        (Object.entries(uoGroups) as [string, EquipmentRequest[]][]).forEach(([uo, items]) => {
+            if (yPos > 270) { doc.addPage(); yPos = 20; }
+            doc.setFontSize(11);
+            doc.setTextColor(40);
+            doc.text(`Unidad Operativa: ${uo}`, 14, yPos);
+            yPos += 3;
+
+            let head: string[][] = [];
+            let body: string[][] = [];
+
+            if (section.status === RequestStatus.PENDING) {
+                head = [['Descripción', 'Detalle', 'Cant', 'F. Nec.', 'Comentarios']];
+                body = items.map(r => [r.description, r.capacity, r.quantity.toString(), r.needDate, r.comments || '']);
+            } else if (section.status === RequestStatus.OWN) {
+                head = [['Descripción', 'Interno', 'Marca/Modelo', 'Cant', 'F. Disp.']];
+                body = items.map(r => [r.description, r.ownDetails?.internalId || '-', `${r.ownDetails?.brand} ${r.ownDetails?.model}`, r.quantity.toString(), r.ownDetails?.availabilityDate || '-']);
+            } else if (section.status === RequestStatus.BUY) {
+                head = [['Descripción', 'Detalle', 'Cant', 'F. Nec.', 'Comentarios']];
+                body = items.map(r => [r.description, r.capacity, r.quantity.toString(), r.needDate, r.comments || '']);
+            } else {
+                head = [['Descripción', 'Detalle', 'Cant', 'F. Nec.', 'Plazo']];
+                body = items.map(r => [r.description, r.capacity, r.quantity.toString(), r.needDate, `${r.rentalDuration} meses`]);
+            }
+
+            autoTable(doc, {
+                startY: yPos,
+                head: head,
+                body: body,
+                theme: 'striped',
+                headStyles: { fillColor: [27, 77, 62] },
+                styles: { fontSize: 8 },
+                margin: { left: 14 }
+            });
+
+            yPos = (doc as any).lastAutoTable.finalY + 12;
+        });
+        
+        yPos += 5;
+    });
+
+    doc.save(`Reporte_Unificado_${dateStr}.pdf`);
+  };
+
+  const pendingList = getFilteredRequests(RequestStatus.PENDING);
 
   if (!isAuthenticated) return <LoginScreen onLogin={handleLogin} validPassword={appPassword} />;
 
@@ -295,14 +381,9 @@ const App: React.FC = () => {
             <h2 className="text-sm font-medium text-white/90 uppercase tracking-wide">Asignación de Equipos</h2>
         </div>
         <nav className="flex-1 p-4 space-y-2 flex flex-col">
-          <SidebarItem active={view === 'DASHBOARD'} onClick={() => setView('DASHBOARD')} icon={<LayoutDashboard size={20} />} label="Solicitudes" count={stats.pending} />
-          <div className="pt-6 pb-2 px-3 text-xs font-semibold uppercase text-white/50 tracking-wider">Reportes / Asignaciones</div>
-          <SidebarItem active={view === 'REPORT_OWN'} onClick={() => setView('REPORT_OWN')} icon={<Key size={20} />} label="Asignación Propia" count={stats.own} />
-          <SidebarItem active={view === 'REPORT_BUY'} onClick={() => setView('REPORT_BUY')} icon={<ShoppingCart size={20} />} label="Compra" count={stats.buy} />
-          <SidebarItem active={view === 'REPORT_RENT'} onClick={() => setView('REPORT_RENT')} icon={<Calendar size={20} />} label="Alquiler" count={stats.rent} />
-          <div className="pt-4 mt-2 border-t border-white/10">
-            <SidebarItem active={view === 'COMPLETED'} onClick={() => setView('COMPLETED')} icon={<CheckSquare size={20} />} label="Completadas" count={stats.completed} />
-          </div>
+          <SidebarItem active={view === 'DASHBOARD'} onClick={() => setView('DASHBOARD')} icon={<LayoutDashboard size={20} />} label="Gestión Unificada" />
+          <div className="pt-6 pb-2 px-3 text-xs font-semibold uppercase text-white/50 tracking-wider">Historial</div>
+          <SidebarItem active={view === 'COMPLETED'} onClick={() => setView('COMPLETED')} icon={<CheckSquare size={20} />} label="Completadas" />
           <div className="flex-1"></div>
           <div className="pt-4 border-t border-white/10 mt-2 space-y-2">
             <SidebarItem active={view === 'SETTINGS'} onClick={() => setView('SETTINGS')} icon={<Settings size={20} />} label="Configuración" />
@@ -314,41 +395,53 @@ const App: React.FC = () => {
       <main className="flex-1 overflow-y-auto h-screen">
         <div className="p-6 max-w-7xl mx-auto">
           {view === 'DASHBOARD' && (
-            <div className="space-y-6 animate-in fade-in duration-300">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                 <StatCard label="Pendientes (Cant)" value={stats.pending} color="blue" />
-                 <StatCard label="Propios" value={stats.own} color="emerald" />
-                 <StatCard label="Compra" value={stats.buy} color="red" />
-                 <StatCard label="Alquiler" value={stats.rent} color="amber" />
+            <div className="space-y-8 animate-in fade-in duration-300 pb-12">
+              
+              {/* Dashboard Filters Bar */}
+              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+                <div className="flex-1">
+                  <h2 className="text-2xl font-bold text-slate-800">Panel de Gestión Integral</h2>
+                  <p className="text-slate-500 text-sm mt-1">Control centralizado de requerimientos y estados</p>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+                   <div className="relative w-full sm:w-44">
+                      <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                      <select className="pl-9 pr-4 py-2 border rounded-md text-sm w-full bg-white text-slate-900 border-slate-300 appearance-none" value={uoFilter} onChange={(e) => setUoFilter(e.target.value)}>
+                          <option value="">Todas las UO</option>
+                          {uos.map(uo => <option key={uo.id} value={uo.id}>{uo.nombre}</option>)}
+                      </select>
+                   </div>
+                   <div className="relative w-full sm:w-44">
+                      <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                      <select className="pl-9 pr-4 py-2 border rounded-md text-sm w-full bg-white text-slate-900 border-slate-300 appearance-none" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                          <option value="">Categorías</option>
+                          {categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      </select>
+                   </div>
+                   <div className="relative w-full sm:w-56">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                      <input type="text" placeholder="Buscar..." className="pl-10 pr-4 py-2 border rounded-md text-sm w-full bg-white text-slate-900 border-slate-300" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                   </div>
+                   <Button onClick={handleExportFullPDF} className="flex items-center gap-2 bg-[#1B4D3E] hover:bg-[#113026] w-full sm:w-auto shadow-sm">
+                     <FileDown size={18} /> Exportar Reporte
+                   </Button>
+                </div>
               </div>
 
               <RequestForm onSubmit={handleAddRequest} uos={uos} categories={categories} />
               
+              {/* TABLE 1: PENDING */}
               <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                <div className="p-4 border-b border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-50">
-                  <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Package className="text-slate-500" />Solicitudes Pendientes</h3>
-                  <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-                     <div className="relative">
-                        <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                        <select className="pl-10 pr-4 py-2 border rounded-md text-sm w-full sm:w-48 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900 border-slate-300 appearance-none" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-                            <option value="">Todas las Categorías</option>
-                            {categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                        </select>
-                     </div>
-                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input type="text" placeholder="Buscar por UO o descripción..." className="pl-10 pr-4 py-2 border rounded-md text-sm w-full sm:w-64 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900 border-slate-300" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                     </div>
-                  </div>
+                <div className="p-4 border-b border-slate-200 bg-blue-50/50 flex items-center justify-between">
+                  <h3 className="text-md font-bold text-blue-900 flex items-center gap-2 uppercase tracking-wide"><Package className="text-blue-600" size={18} /> 1. Solicitudes Pendientes</h3>
+                  <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full font-bold">{pendingList.length}</span>
                 </div>
-
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm text-left">
-                    <thead className="text-xs text-slate-500 uppercase bg-slate-100 border-b">
+                    <thead className="text-[11px] text-slate-500 uppercase bg-slate-50 border-b">
                       <tr>
-                        <th className="px-4 py-3">UO</th>
-                        <th className="px-4 py-3">Categoría</th>
-                        <th className="px-4 py-3">Descripción</th>
+                        <th className="px-4 py-3">UO / Descripción</th>
                         <th className="px-4 py-3">Detalle</th>
                         <th className="px-4 py-3">Cant.</th>
                         <th className="px-4 py-3">Necesidad</th>
@@ -356,54 +449,28 @@ const App: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {pendingRequests.length === 0 ? (
-                        <tr><td colSpan={7} className="text-center py-8 text-slate-400">No hay solicitudes pendientes.</td></tr>
+                      {pendingList.length === 0 ? (
+                        <tr><td colSpan={5} className="text-center py-10 text-slate-400 italic">No hay solicitudes pendientes cargadas.</td></tr>
                       ) : (
-                        pendingRequests.map((req) => {
+                        pendingList.map((req) => {
                           const isEditing = editingPendingId === req.id;
                           const isDeleting = deletingPendingId === req.id;
                           return (
                             <tr key={req.id} className={`hover:bg-slate-50 transition-colors ${isEditing ? 'bg-blue-50/50' : ''}`}>
                               <td className="px-4 py-3">
-                                {isEditing ? (
-                                  <select className="border rounded p-1 text-xs w-full bg-white text-slate-900 border-slate-300" value={editPendingValues.uo_id} onChange={(e) => setEditPendingValues({...editPendingValues, uo_id: e.target.value})}>
-                                    {uos.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                                  </select>
-                                ) : <span className="font-medium text-slate-900">{req.uo_nombre}</span>}
-                              </td>
-                              <td className="px-4 py-3">
-                                {isEditing ? (
-                                  <select className="border rounded p-1 text-xs w-full bg-white text-slate-900 border-slate-300" value={editPendingValues.categoria_id} onChange={(e) => setEditPendingValues({...editPendingValues, categoria_id: e.target.value})}>
-                                    {categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                                  </select>
-                                ) : <span className="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-800 border border-slate-200">{req.categoria_nombre}</span>}
-                              </td>
-                              <td className="px-4 py-3">
+                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">{req.uo_nombre}</div>
                                 {isEditing ? (
                                   <input type="text" className="border rounded p-1 text-xs w-full bg-white text-slate-900 border-slate-300" value={editPendingValues.description} onChange={(e) => setEditPendingValues({...editPendingValues, description: e.target.value})} />
                                 ) : (
                                   <div>
                                     <div className="font-medium text-slate-800">{req.description}</div>
-                                    {/* Comments shown on a second line in the Description column as requested */}
                                     {req.comments && <div className="text-[10px] text-slate-500 italic mt-0.5 border-t border-slate-100 pt-0.5 leading-tight">{req.comments}</div>}
                                   </div>
                                 )}
                               </td>
-                              <td className="px-4 py-3">
-                                {isEditing ? (
-                                  <input type="text" className="border rounded p-1 text-xs w-full bg-white text-slate-900 border-slate-300" value={editPendingValues.capacity} onChange={(e) => setEditPendingValues({...editPendingValues, capacity: e.target.value})} />
-                                ) : <span className="text-slate-600">{req.capacity}</span>}
-                              </td>
-                              <td className="px-4 py-3">
-                                {isEditing ? (
-                                  <input type="number" className="border rounded p-1 text-xs w-20 bg-white text-slate-900 border-slate-300" value={editPendingValues.quantity} onChange={(e) => setEditPendingValues({...editPendingValues, quantity: parseInt(e.target.value)})} />
-                                ) : <span className="font-semibold">{req.quantity}</span>}
-                              </td>
-                              <td className="px-4 py-3">
-                                {isEditing ? (
-                                  <input type="date" className="border rounded p-1 text-xs bg-white text-slate-900 border-slate-300" value={editPendingValues.needDate} onChange={(e) => setEditPendingValues({...editPendingValues, needDate: e.target.value})} />
-                                ) : <span className="whitespace-nowrap text-red-600 font-medium">{req.needDate}</span>}
-                              </td>
+                              <td className="px-4 py-3 text-slate-600">{req.capacity}</td>
+                              <td className="px-4 py-3 font-semibold">{req.quantity}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-red-600 font-medium">{req.needDate}</td>
                               <td className="px-4 py-3">
                                 <div className="flex justify-center gap-2 items-center">
                                   {isDeleting ? (
@@ -442,13 +509,65 @@ const App: React.FC = () => {
                   </table>
                 </div>
               </div>
+
+              {/* TABLE 2: OWN */}
+              <ReportView 
+                  hideHeader={true}
+                  compact={true}
+                  title="2. Asignación Equipo Propio" 
+                  status={RequestStatus.OWN} 
+                  requests={requests} 
+                  categories={categories} 
+                  uos={uos} 
+                  globalFilters={{ searchTerm, categoryFilter, uoFilter }}
+                  onMarkCompleted={handleMarkAsCompleted} 
+                  onUpdateRequest={handleUpdateRequest} 
+                  onDeleteRequest={handleDeleteRequest} 
+              />
+
+              {/* TABLE 3: BUY */}
+              <ReportView 
+                  hideHeader={true}
+                  compact={true}
+                  title="3. Gestión de Compra" 
+                  status={RequestStatus.BUY} 
+                  requests={requests} 
+                  categories={categories} 
+                  uos={uos} 
+                  globalFilters={{ searchTerm, categoryFilter, uoFilter }}
+                  onMarkCompleted={handleMarkAsCompleted} 
+                  onUpdateRequest={handleUpdateRequest} 
+                  onDeleteRequest={handleDeleteRequest} 
+              />
+
+              {/* TABLE 4: RENT */}
+              <ReportView 
+                  hideHeader={true}
+                  compact={true}
+                  title="4. Alquiler de Equipos" 
+                  status={RequestStatus.RENT} 
+                  requests={requests} 
+                  categories={categories} 
+                  uos={uos} 
+                  globalFilters={{ searchTerm, categoryFilter, uoFilter }}
+                  onMarkCompleted={handleMarkAsCompleted} 
+                  onUpdateRequest={handleUpdateRequest} 
+                  onDeleteRequest={handleDeleteRequest} 
+              />
+
             </div>
           )}
 
-          {view === 'REPORT_OWN' && <ReportView title="Asignación de Equipo Propio" status={RequestStatus.OWN} requests={requests} categories={categories} uos={uos} onMarkCompleted={handleMarkAsCompleted} onUpdateRequest={handleUpdateRequest} onDeleteRequest={handleDeleteRequest} />}
-          {view === 'REPORT_BUY' && <ReportView title="Compra de Equipos" status={RequestStatus.BUY} requests={requests} categories={categories} uos={uos} onMarkCompleted={handleMarkAsCompleted} onUpdateRequest={handleUpdateRequest} onDeleteRequest={handleDeleteRequest} />}
-          {view === 'REPORT_RENT' && <ReportView title="Alquiler de Equipos" status={RequestStatus.RENT} requests={requests} categories={categories} uos={uos} onMarkCompleted={handleMarkAsCompleted} onUpdateRequest={handleUpdateRequest} onDeleteRequest={handleDeleteRequest} />}
-          {view === 'COMPLETED' && <ReportView title="Solicitudes Completadas" status={RequestStatus.COMPLETED} requests={requests} categories={categories} uos={uos} />}
+          {view === 'COMPLETED' && (
+            <ReportView 
+                title="Historial de Solicitudes Completadas" 
+                status={RequestStatus.COMPLETED} 
+                requests={requests} 
+                categories={categories} 
+                uos={uos} 
+            />
+          )}
+
           {view === 'SETTINGS' && (
             <SettingsView 
                 uos={uos.map(u => u.nombre)} 
@@ -477,10 +596,5 @@ const SidebarItem = ({ active, onClick, icon, label, count }: any) => (
     {count > 0 && <span className={`text-xs px-2 py-0.5 rounded-full ${active ? 'bg-[#1B4D3E] text-white' : 'bg-[#113026] text-white/90'}`}>{count}</span>}
   </button>
 );
-
-const StatCard = ({ label, value, color }: any) => {
-    const colors: any = { blue: "bg-blue-50 border-blue-200 text-blue-700", emerald: "bg-emerald-50 border-emerald-200 text-emerald-700", red: "bg-red-50 border-red-200 text-red-700", amber: "bg-amber-50 border-amber-200 text-amber-700" };
-    return (<div className={`p-4 rounded-lg border ${colors[color]} flex flex-col items-center justify-center`}><span className="text-2xl font-bold">{value}</span><span className="text-xs uppercase tracking-wide opacity-80">{label}</span></div>);
-}
 
 export default App;

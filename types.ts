@@ -46,17 +46,14 @@ export interface EquipmentRequest {
   comments: string;
   status: RequestStatus;
   
-  // These might come from joined 'asignaciones'
-  // Fix: Added solicitud_id to satisfy TypeScript property checks in App.tsx
   solicitud_id?: string;
   ownDetails?: OwnDetails;
   buyDetails?: BuyDetails;
   rentalDuration?: number;
   fulfillmentType?: RequestStatus;
   
-  // DB consistency
   unidad_operativa?: UnidadOperativa;
   categoria?: Categoria;
 }
 
-export type ViewMode = 'DASHBOARD' | 'REPORT_OWN' | 'REPORT_RENT' | 'REPORT_BUY' | 'COMPLETED' | 'SETTINGS';
+export type ViewMode = 'DASHBOARD' | 'COMPLETED' | 'SETTINGS';
