@@ -1,3 +1,4 @@
+
 export enum RequestStatus {
   PENDING = 'PENDING',
   OWN = 'OWN',
@@ -46,6 +47,8 @@ export interface EquipmentRequest {
   status: RequestStatus;
   
   // These might come from joined 'asignaciones'
+  // Fix: Added solicitud_id to satisfy TypeScript property checks in App.tsx
+  solicitud_id?: string;
   ownDetails?: OwnDetails;
   buyDetails?: BuyDetails;
   rentalDuration?: number;

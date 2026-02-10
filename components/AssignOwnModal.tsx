@@ -143,9 +143,9 @@ export const AssignOwnModal: React.FC<AssignOwnModalProps> = ({
                             required
                             type="text"
                             placeholder="Ingrese N° de Interno..."
-                            className="w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 text-sm bg-white text-slate-900 pr-10"
+                            className="w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 text-sm bg-white text-slate-900 pr-10 uppercase"
                             value={formData.internalId}
-                            onChange={(e) => setFormData({...formData, internalId: e.target.value})}
+                            onChange={(e) => setFormData({...formData, internalId: e.target.value.toUpperCase()})}
                             />
                             <div className="absolute right-2 top-1/2 -translate-y-1/2">
                                 {isSearching ? <Loader2 size={16} className="text-blue-500 animate-spin" /> : <Search size={16} className="text-slate-400" />}

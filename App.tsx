@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { RequestForm } from './components/RequestForm';
 import { EquipmentRequest, RequestStatus, ViewMode, OwnDetails, BuyDetails, UnidadOperativa, Categoria } from './types';
@@ -41,19 +40,15 @@ const App: React.FC = () => {
   const fetchInitialData = async () => {
     setIsLoading(true);
     try {
-        // Fetch Password
         const { data: config } = await supabase.from('configuracion_sistema').select('*').eq('clave', 'app_password').single();
         if (config) setAppPassword(config.valor);
 
-        // Fetch UOs
         const { data: uoData } = await supabase.from('unidades_operativas').select('*').order('nombre');
-        if (uoData) setUos(uoData);
+        if (uoData) setUos(uoData || []);
 
-        // Fetch Categories
         const { data: catData } = await supabase.from('categorias').select('*').order('nombre');
-        if (catData) setCategories(catData);
+        if (catData) setCategories(catData || []);
 
-        // Fetch Requests + Asignaciones
         await fetchRequests();
     } catch (e) {
         console.error("Error fetching initial data", e);
@@ -63,7 +58,6 @@ const App: React.FC = () => {
   };
 
   const fetchRequests = async () => {
-    // Fix: Added equipment details to the query via join
     const { data: solicitudes, error } = await supabase
         .from('solicitudes')
         .select(`
@@ -82,7 +76,6 @@ const App: React.FC = () => {
         return;
     }
 
-    // Flatten data for the UI
     const flattened: EquipmentRequest[] = [];
     
     solicitudes.forEach((sol: any) => {
@@ -104,16 +97,14 @@ const App: React.FC = () => {
         if (sol.estado_general === 'PENDING') {
             flattened.push(baseRequest);
         } else {
-            // Each assignment acts as a partially or fully fulfilled item
             sol.asignaciones.forEach((asig: any) => {
                 flattened.push({
                     ...baseRequest,
-                    id: asig.id, // Use assignment ID for identification
+                    id: asig.id, 
                     solicitud_id: sol.id,
-                    quantity: asig.cantidad_assigned || asig.cantidad_asignada, // Match column name
+                    quantity: asig.cantidad_assigned || asig.cantidad_asignada,
                     status: asig.tipo_gestion as RequestStatus,
                     rentalDuration: asig.alquiler_meses,
-                    // Fix: Populate all required properties of OwnDetails from the joined 'equipos' data
                     ownDetails: asig.equipo_id ? {
                         internalId: asig.equipos?.nro_interno || '',
                         brand: asig.equipos?.marca || '',
@@ -126,11 +117,10 @@ const App: React.FC = () => {
                         vendor: asig.compra_proveedor,
                         deliveryDate: asig.compra_fecha_entrega
                     } : undefined,
-                    fulfillmentType: sol.estado_general === 'COMPLETED' ? asig.tipo_gestion : undefined
+                    fulfillmentType: sol.estado_general === 'COMPLETED' ? asig.tipo_gestion : (asig.tipo_gestion as RequestStatus)
                 });
             });
 
-            // If quantity total > assigned total, there is still a pending part
             const totalAssigned = sol.asignaciones.reduce((acc: number, curr: any) => acc + (curr.cantidad_assigned || curr.cantidad_asignada || 0), 0);
             if (totalAssigned < sol.cantidad_total) {
                 flattened.push({
@@ -149,7 +139,7 @@ const App: React.FC = () => {
   const handleLogout = () => { setIsAuthenticated(false); setView('DASHBOARD'); };
 
   const handleAddRequest = async (req: any) => {
-    const { data, error } = await supabase.from('solicitudes').insert({
+    const { error } = await supabase.from('solicitudes').insert({
         fecha_solicitud: req.requestDate,
         unidad_operativa_id: req.uo_id,
         categoria_id: req.categoria_id,
@@ -159,13 +149,12 @@ const App: React.FC = () => {
         fecha_necesidad: req.needDate,
         comentarios: req.comments,
         estado_general: 'PENDING'
-    }).select().single();
+    });
 
     if (!error) await fetchRequests();
   };
 
   const updateStatusSimple = async (id: string, status: RequestStatus) => {
-      // Logic for simple status change (e.g. to BUY)
       const req = requests.find(r => r.id === id);
       if (!req) return;
 
@@ -203,7 +192,6 @@ const App: React.FC = () => {
       if (req.status === RequestStatus.PENDING) {
           await supabase.from('solicitudes').delete().eq('id', id);
       } else {
-          // Return to pending = Delete assignment
           await supabase.from('asignaciones').delete().eq('id', id);
       }
       await fetchRequests();
@@ -393,7 +381,13 @@ const App: React.FC = () => {
                               <td className="px-4 py-3">
                                 {isEditing ? (
                                   <input type="text" className="border rounded p-1 text-xs w-full bg-white text-slate-900 border-slate-300" value={editPendingValues.description} onChange={(e) => setEditPendingValues({...editPendingValues, description: e.target.value})} />
-                                ) : <div className="font-medium text-slate-800">{req.description}</div>}
+                                ) : (
+                                  <div>
+                                    <div className="font-medium text-slate-800">{req.description}</div>
+                                    {/* Comments shown on a second line in the Description column as requested */}
+                                    {req.comments && <div className="text-[10px] text-slate-500 italic mt-0.5 border-t border-slate-100 pt-0.5 leading-tight">{req.comments}</div>}
+                                  </div>
+                                )}
                               </td>
                               <td className="px-4 py-3">
                                 {isEditing ? (
@@ -451,10 +445,10 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {view === 'REPORT_OWN' && <ReportView title="Asignación de Equipo Propio" status={RequestStatus.OWN} requests={requests} onMarkCompleted={handleMarkAsCompleted} onUpdateRequest={handleUpdateRequest} onDeleteRequest={handleDeleteRequest} />}
-          {view === 'REPORT_BUY' && <ReportView title="Compra de Equipos" status={RequestStatus.BUY} requests={requests} onMarkCompleted={handleMarkAsCompleted} onUpdateRequest={handleUpdateRequest} onDeleteRequest={handleDeleteRequest} />}
-          {view === 'REPORT_RENT' && <ReportView title="Alquiler de Equipos" status={RequestStatus.RENT} requests={requests} onMarkCompleted={handleMarkAsCompleted} onUpdateRequest={handleUpdateRequest} onDeleteRequest={handleDeleteRequest} />}
-          {view === 'COMPLETED' && <ReportView title="Solicitudes Completadas" status={RequestStatus.COMPLETED} requests={requests} />}
+          {view === 'REPORT_OWN' && <ReportView title="Asignación de Equipo Propio" status={RequestStatus.OWN} requests={requests} categories={categories} uos={uos} onMarkCompleted={handleMarkAsCompleted} onUpdateRequest={handleUpdateRequest} onDeleteRequest={handleDeleteRequest} />}
+          {view === 'REPORT_BUY' && <ReportView title="Compra de Equipos" status={RequestStatus.BUY} requests={requests} categories={categories} uos={uos} onMarkCompleted={handleMarkAsCompleted} onUpdateRequest={handleUpdateRequest} onDeleteRequest={handleDeleteRequest} />}
+          {view === 'REPORT_RENT' && <ReportView title="Alquiler de Equipos" status={RequestStatus.RENT} requests={requests} categories={categories} uos={uos} onMarkCompleted={handleMarkAsCompleted} onUpdateRequest={handleUpdateRequest} onDeleteRequest={handleDeleteRequest} />}
+          {view === 'COMPLETED' && <ReportView title="Solicitudes Completadas" status={RequestStatus.COMPLETED} requests={requests} categories={categories} uos={uos} />}
           {view === 'SETTINGS' && (
             <SettingsView 
                 uos={uos.map(u => u.nombre)} 
