@@ -1,7 +1,5 @@
-
 import React, { useMemo, useState } from 'react';
 import { EquipmentRequest, RequestStatus, Categoria, UnidadOperativa } from '../types';
-// Fixed missing imports: Key, ShoppingCart, Calendar
 import { FileDown, MapPin, Undo2, CheckCircle, Archive, AlertTriangle, Pencil, Trash2, X, Save, Search, Filter, ClipboardCheck, Key, ShoppingCart, Calendar } from 'lucide-react';
 import { Button } from './Button';
 import { jsPDF } from 'jspdf';
@@ -263,7 +261,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
                                             </div>
                                         ) : isEditing ? (
                                             <div className="flex justify-center gap-2">
-                                            <button onClick={() => saveEditing(id)} className="text-emerald-600 p-1 hover:bg-emerald-100 rounded-full" title="Guardar"><Save size={18} /></button>
+                                            <button onClick={() => saveEditing(req.id)} className="text-emerald-600 p-1 hover:bg-emerald-100 rounded-full" title="Guardar"><Save size={18} /></button>
                                             <button onClick={cancelEditing} className="text-slate-400 p-1 hover:bg-slate-200 rounded-full" title="Cancelar"><X size={18} /></button>
                                             </div>
                                         ) : (

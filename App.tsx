@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { RequestForm } from './components/RequestForm';
 import { EquipmentRequest, RequestStatus, ViewMode, OwnDetails, BuyDetails, UnidadOperativa, Categoria } from './types';
@@ -177,15 +176,32 @@ const App: React.FC = () => {
   };
 
   const handleUpdateRequest = async (id: string, updates: Partial<EquipmentRequest>) => {
-      const { error } = await supabase.from('solicitudes').update({
+      const req = requests.find(r => r.id === id);
+      if (!req) return;
+      
+      const dbId = req.solicitud_id || req.id;
+
+      // Actualizar la solicitud original
+      const { error: solError } = await supabase.from('solicitudes').update({
         descripcion: updates.description,
         capacidad: updates.capacity,
         cantidad_total: updates.quantity,
         fecha_necesidad: updates.needDate,
         comentarios: updates.comments
-      }).eq('id', id);
+      }).eq('id', dbId);
+
+      // Si es una asignación, actualizar también sus campos específicos
+      if (req.status !== RequestStatus.PENDING && req.id !== dbId) {
+          const asigUpdates: any = {};
+          if (updates.rentalDuration !== undefined) asigUpdates.alquiler_meses = updates.rentalDuration;
+          if (updates.ownDetails?.availabilityDate !== undefined) asigUpdates.disponibilidad_obra = updates.ownDetails.availabilityDate;
+          
+          if (Object.keys(asigUpdates).length > 0) {
+              await supabase.from('asignaciones').update(asigUpdates).eq('id', req.id);
+          }
+      }
       
-      if (!error) await fetchRequests();
+      await fetchRequests();
   };
 
   const handleDeleteRequest = async (id: string) => {
@@ -323,7 +339,6 @@ const App: React.FC = () => {
             return acc;
         }, {} as Record<string, EquipmentRequest[]>);
 
-        // Fixed type inference issue by explicitly casting Object.entries to fix map errors on lines 338, 341, 344, 347 (per report)
         (Object.entries(uoGroups) as [string, EquipmentRequest[]][]).forEach(([uo, items]) => {
             if (yPos > 270) { doc.addPage(); yPos = 20; }
             doc.setFontSize(11);
