@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { EquipmentRequest, RequestStatus, Categoria, UnidadOperativa } from '../types';
-import { FileDown, MapPin, Undo2, CheckCircle, Archive, AlertTriangle, Pencil, Trash2, X, Save, Search, Filter, ClipboardCheck, Key, ShoppingCart, Calendar } from 'lucide-react';
+import { FileDown, MapPin, Undo2, CheckCircle, Archive, AlertTriangle, Pencil, Trash2, X, Save, Search, Filter, ClipboardCheck, Key, ShoppingCart, Calendar, RotateCcw } from 'lucide-react';
 import { Button } from './Button';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -198,7 +198,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
                   {status === RequestStatus.RENT && <><th className="px-6 py-3 bg-amber-50 text-amber-700">Plazo</th><th className="px-6 py-3">Comentarios</th></>}
                   {status === RequestStatus.BUY && <th className="px-6 py-3">Comentarios</th>}
                   {status === RequestStatus.COMPLETED && <th className="px-6 py-3">Detalle Cierre</th>}
-                  {status !== RequestStatus.COMPLETED && <th className="px-6 py-3 text-center">Acciones</th>}
+                  <th className="px-6 py-3 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -249,9 +249,19 @@ export const ReportView: React.FC<ReportViewProps> = ({
                                         </td>
                                     )}
 
-                                    {status !== RequestStatus.COMPLETED && (
-                                        <td className="px-6 py-4">
-                                        {isDeleting ? (
+                                    <td className="px-6 py-4">
+                                        {status === RequestStatus.COMPLETED ? (
+                                            <div className="flex justify-center">
+                                                <button 
+                                                    onClick={() => onReturnToPending?.(req.id)} 
+                                                    className="text-slate-400 hover:text-amber-600 p-1.5 hover:bg-amber-50 rounded-full transition-all flex items-center gap-1 group" 
+                                                    title="Revertir cierre y devolver a gestión original"
+                                                >
+                                                    <RotateCcw size={18} className="group-hover:rotate-[-45deg] transition-transform" />
+                                                    <span className="text-[10px] font-bold uppercase hidden group-hover:inline">Revertir</span>
+                                                </button>
+                                            </div>
+                                        ) : isDeleting ? (
                                             <div className="flex flex-col items-center gap-1">
                                             <span className="text-[10px] font-bold text-red-600 uppercase">¿Revertir?</span>
                                             <div className="flex gap-2">
@@ -278,8 +288,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
                                             <button onClick={() => onReturnToPending?.(req.id)} className="text-slate-400 hover:text-amber-600 p-1 hover:bg-amber-50 rounded-full" title="Devolver a pendientes"><Undo2 size={18} /></button>
                                             </div>
                                         )}
-                                        </td>
-                                    )}
+                                    </td>
                                 </tr>
                             );
                         })}

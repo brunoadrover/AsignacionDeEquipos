@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { RequestForm } from './components/RequestForm';
 import { EquipmentRequest, RequestStatus, ViewMode, OwnDetails, BuyDetails, UnidadOperativa, Categoria } from './types';
@@ -99,13 +100,14 @@ const App: React.FC = () => {
         if (sol.estado_general === 'PENDING') {
             flattened.push(baseRequest);
         } else {
+            // Procesar asignaciones
             sol.asignaciones.forEach((asig: any) => {
                 flattened.push({
                     ...baseRequest,
                     id: asig.id, 
                     solicitud_id: sol.id,
                     quantity: asig.cantidad_assigned || asig.cantidad_asignada,
-                    status: asig.tipo_gestion as RequestStatus,
+                    status: sol.estado_general === 'COMPLETED' ? RequestStatus.COMPLETED : (asig.tipo_gestion as RequestStatus),
                     rentalDuration: asig.alquiler_meses,
                     ownDetails: asig.equipo_id ? {
                         internalId: asig.equipos?.nro_interno || '',
@@ -119,12 +121,12 @@ const App: React.FC = () => {
                         vendor: asig.compra_proveedor,
                         deliveryDate: asig.compra_fecha_entrega
                     } : undefined,
-                    fulfillmentType: sol.estado_general === 'COMPLETED' ? asig.tipo_gestion : (asig.tipo_gestion as RequestStatus)
+                    fulfillmentType: asig.tipo_gestion as RequestStatus
                 });
             });
 
             const totalAssigned = sol.asignaciones.reduce((acc: number, curr: any) => acc + (curr.cantidad_assigned || curr.cantidad_asignada || 0), 0);
-            if (totalAssigned < sol.cantidad_total) {
+            if (totalAssigned < sol.cantidad_total && sol.estado_general !== 'COMPLETED') {
                 flattened.push({
                     ...baseRequest,
                     quantity: sol.cantidad_total - totalAssigned,
@@ -179,19 +181,17 @@ const App: React.FC = () => {
       const req = requests.find(r => r.id === id);
       if (!req) return;
       
-      const dbId = req.solicitud_id || req.id;
+      const solicitudId = req.solicitud_id || req.id;
 
-      // Actualizar la solicitud original
       const { error: solError } = await supabase.from('solicitudes').update({
         descripcion: updates.description,
         capacidad: updates.capacity,
         cantidad_total: updates.quantity,
         fecha_necesidad: updates.needDate,
         comentarios: updates.comments
-      }).eq('id', dbId);
+      }).eq('id', solicitudId);
 
-      // Si es una asignación, actualizar también sus campos específicos
-      if (req.status !== RequestStatus.PENDING && req.id !== dbId) {
+      if (req.status !== RequestStatus.PENDING && req.id !== solicitudId) {
           const asigUpdates: any = {};
           if (updates.rentalDuration !== undefined) asigUpdates.alquiler_meses = updates.rentalDuration;
           if (updates.ownDetails?.availabilityDate !== undefined) asigUpdates.disponibilidad_obra = updates.ownDetails.availabilityDate;
@@ -201,7 +201,7 @@ const App: React.FC = () => {
           }
       }
       
-      await fetchRequests();
+      if (!solError) await fetchRequests();
   };
 
   const handleDeleteRequest = async (id: string) => {
@@ -217,12 +217,45 @@ const App: React.FC = () => {
   };
 
   const handleMarkAsCompleted = async (id: string) => {
-    const req = requests.find(r => r.id === id);
-    if (!req) return;
+    try {
+        const req = requests.find(r => r.id === id);
+        if (!req) return;
 
-    const solicitudId = (req as any).solicitud_id || req.id;
-    await supabase.from('solicitudes').update({ estado_general: 'COMPLETED' }).eq('id', solicitudId);
-    await fetchRequests();
+        const solicitudId = (req as any).solicitud_id || req.id;
+        
+        const { error } = await supabase
+            .from('solicitudes')
+            .update({ estado_general: 'COMPLETED' })
+            .eq('id', solicitudId);
+
+        if (error) throw error;
+        
+        await fetchRequests();
+    } catch (error) {
+        console.error("Error al completar la solicitud:", error);
+        alert("Ocurrió un error al intentar marcar la solicitud como completada.");
+    }
+  };
+
+  const handleRevertCompleted = async (id: string) => {
+    try {
+        const req = requests.find(r => r.id === id);
+        if (!req) return;
+
+        const solicitudId = (req as any).solicitud_id || req.id;
+        
+        const { error } = await supabase
+            .from('solicitudes')
+            .update({ estado_general: 'PARTIAL' })
+            .eq('id', solicitudId);
+
+        if (error) throw error;
+        
+        await fetchRequests();
+    } catch (error) {
+        console.error("Error al revertir la solicitud:", error);
+        alert("Ocurrió un error al intentar devolver el registro.");
+    }
   };
 
   const startEditingPending = (req: EquipmentRequest) => {
@@ -396,7 +429,7 @@ const App: React.FC = () => {
             <h2 className="text-sm font-medium text-white/90 uppercase tracking-wide">Asignación de Equipos</h2>
         </div>
         <nav className="flex-1 p-4 space-y-2 flex flex-col">
-          <SidebarItem active={view === 'DASHBOARD'} onClick={() => setView('DASHBOARD')} icon={<LayoutDashboard size={20} />} label="Gestión Unificada" />
+          <SidebarItem active={view === 'DASHBOARD'} onClick={() => setView('DASHBOARD')} icon={<LayoutDashboard size={20} />} label="Control de Requerimientos" />
           <div className="pt-6 pb-2 px-3 text-xs font-semibold uppercase text-white/50 tracking-wider">Historial</div>
           <SidebarItem active={view === 'COMPLETED'} onClick={() => setView('COMPLETED')} icon={<CheckSquare size={20} />} label="Completadas" />
           <div className="flex-1"></div>
@@ -412,10 +445,9 @@ const App: React.FC = () => {
           {view === 'DASHBOARD' && (
             <div className="space-y-8 animate-in fade-in duration-300 pb-12">
               
-              {/* Dashboard Filters Bar */}
               <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 rounded-lg shadow-sm border border-slate-200">
                 <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-slate-800">Panel de Gestión Integral</h2>
+                  <h2 className="text-2xl font-bold text-slate-800">Panel de Control de Requerimientos</h2>
                   <p className="text-slate-500 text-sm mt-1">Control centralizado de requerimientos y estados</p>
                 </div>
                 
@@ -446,7 +478,6 @@ const App: React.FC = () => {
 
               <RequestForm onSubmit={handleAddRequest} uos={uos} categories={categories} />
               
-              {/* TABLE 1: PENDING */}
               <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                 <div className="p-4 border-b border-slate-200 bg-blue-50/50 flex items-center justify-between">
                   <h3 className="text-md font-bold text-blue-900 flex items-center gap-2 uppercase tracking-wide"><Package className="text-blue-600" size={18} /> 1. Solicitudes Pendientes</h3>
@@ -456,7 +487,7 @@ const App: React.FC = () => {
                   <table className="w-full text-sm text-left">
                     <thead className="text-[11px] text-slate-500 uppercase bg-slate-50 border-b">
                       <tr>
-                        <th className="px-4 py-3">UO / Descripción</th>
+                        <th className="px-4 py-3">UO / Descripción / Comentarios</th>
                         <th className="px-4 py-3">Detalle</th>
                         <th className="px-4 py-3">Cant.</th>
                         <th className="px-4 py-3">Necesidad</th>
@@ -475,7 +506,10 @@ const App: React.FC = () => {
                               <td className="px-4 py-3">
                                 <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">{req.uo_nombre}</div>
                                 {isEditing ? (
-                                  <input type="text" className="border rounded p-1 text-xs w-full bg-white text-slate-900 border-slate-300" value={editPendingValues.description} onChange={(e) => setEditPendingValues({...editPendingValues, description: e.target.value})} />
+                                  <div className="space-y-1">
+                                    <input type="text" placeholder="Descripción" className="border rounded p-1 text-xs w-full bg-white text-slate-900 border-slate-300" value={editPendingValues.description} onChange={(e) => setEditPendingValues({...editPendingValues, description: e.target.value})} />
+                                    <input type="text" placeholder="Comentarios" className="border rounded p-1 text-[10px] w-full bg-white text-slate-900 border-slate-300 italic" value={editPendingValues.comments} onChange={(e) => setEditPendingValues({...editPendingValues, comments: e.target.value})} />
+                                  </div>
                                 ) : (
                                   <div>
                                     <div className="font-medium text-slate-800">{req.description}</div>
@@ -483,9 +517,21 @@ const App: React.FC = () => {
                                   </div>
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-slate-600">{req.capacity}</td>
-                              <td className="px-4 py-3 font-semibold">{req.quantity}</td>
-                              <td className="px-4 py-3 whitespace-nowrap text-red-600 font-medium">{req.needDate}</td>
+                              <td className="px-4 py-3 text-slate-600">
+                                {isEditing ? (
+                                    <input type="text" placeholder="Detalle" className="border rounded p-1 text-xs w-full bg-white text-slate-900 border-slate-300" value={editPendingValues.capacity} onChange={(e) => setEditPendingValues({...editPendingValues, capacity: e.target.value})} />
+                                ) : req.capacity}
+                              </td>
+                              <td className="px-4 py-3 font-semibold">
+                                {isEditing ? (
+                                    <input type="number" min="1" className="border rounded p-1 text-xs w-16 bg-white text-slate-900 border-slate-300" value={editPendingValues.quantity} onChange={(e) => setEditPendingValues({...editPendingValues, quantity: Number(e.target.value)})} />
+                                ) : req.quantity}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-red-600 font-medium">
+                                {isEditing ? (
+                                    <input type="date" className="border rounded p-1 text-xs bg-white text-slate-900 border-slate-300" value={editPendingValues.needDate} onChange={(e) => setEditPendingValues({...editPendingValues, needDate: e.target.value})} />
+                                ) : req.needDate}
+                              </td>
                               <td className="px-4 py-3">
                                 <div className="flex justify-center gap-2 items-center">
                                   {isDeleting ? (
@@ -525,7 +571,6 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* TABLE 2: OWN */}
               <ReportView 
                   hideHeader={true}
                   compact={true}
@@ -540,7 +585,6 @@ const App: React.FC = () => {
                   onDeleteRequest={handleDeleteRequest} 
               />
 
-              {/* TABLE 3: BUY */}
               <ReportView 
                   hideHeader={true}
                   compact={true}
@@ -555,7 +599,6 @@ const App: React.FC = () => {
                   onDeleteRequest={handleDeleteRequest} 
               />
 
-              {/* TABLE 4: RENT */}
               <ReportView 
                   hideHeader={true}
                   compact={true}
@@ -580,6 +623,7 @@ const App: React.FC = () => {
                 requests={requests} 
                 categories={categories} 
                 uos={uos} 
+                onReturnToPending={handleRevertCompleted}
             />
           )}
 
